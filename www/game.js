@@ -415,7 +415,24 @@ function hitWall(e, obst) {
   if (obst) for (const b of blockers) if (b.f === e.fl && Math.hypot(b.x - e.x, b.z - e.z) < e.r + b.r) return true;
   return false;
 }
-function moveEnt(e, dx, dz, obst) { e.x += dx; if (hitWall(e, obst)) e.x -= dx; e.z += dz; if (hitWall(e, obst)) e.z -= dz; updateFloor(e); }
+function stuckIn(e) { return blockers.filter(b => b.f === e.fl && Math.hypot(b.x - e.x, b.z - e.z) < e.r + b.r); }
+function moveEnt(e, dx, dz, obst) {
+  const inside = obst ? stuckIn(e) : [];   // blockers we already overlap: moving away from them is always allowed
+  const bad = () => { if (!hitWall(e, false)) { if (!obst) return false; for (const b of blockers) if (b.f === e.fl && Math.hypot(b.x - e.x, b.z - e.z) < e.r + b.r) { const o = inside.includes(b); if (!o) return true; } return false; } return true; };
+  const far = (px, pz) => inside.every(b => Math.hypot(b.x - e.x, b.z - e.z) >= Math.hypot(b.x - px, b.z - pz) - 1e-6);
+  let px = e.x, pz = e.z; e.x += dx; if (bad() || !far(px, pz)) e.x = px;
+  px = e.x; pz = e.z; e.z += dz; if (bad() || !far(px, pz)) e.z = pz;
+  updateFloor(e);
+}
+function leaveHiding(w) {   // put Nani on the nearest free spot around the bed / wardrobe
+  const p = player, ang0 = Math.atan2(w.fz, w.fx), tries = [];
+  for (const dist of [1.2, 1.5, 1.9, 0.9]) for (const da of [0, 0.6, -0.6, 1.2, -1.2, 1.9, -1.9, Math.PI]) tries.push([dist, da]);
+  for (const [dist, da] of tries) {
+    p.x = w.x + Math.cos(ang0 + da) * dist; p.z = w.z + Math.sin(ang0 + da) * dist;
+    if (!hitWall(p, true)) { p.hidden = null; return; }
+  }
+  p.x = w.x + w.fx * 1.3; p.z = w.z + w.fz * 1.3; p.hidden = null;   // last resort: the walk-out rule above lets her step free
+}
 function los(f, ax, az, bx, bz) {
   const d = Math.hypot(bx - ax, bz - az), n = Math.max(2, Math.ceil(d / 0.6));
   for (let i = 1; i < n; i++) if (solidAt(f, Math.floor((ax + (bx - ax) * i / n) / TS), Math.floor((az + (bz - az) * i / n) / TS))) return false;
@@ -984,11 +1001,15 @@ function interact() {
   if (state !== 'play') return;
   const t = findTarget(); if (!t) return;
   if (t.type === 'unhide') {
-    const w = player.hidden; player.x = w.x + w.fx * 1.05; player.z = w.z + w.fz * 1.05; player.hidden = null;
-    if (hitWall(player, false)) { player.x = w.x; player.z = w.z; } return;
+    leaveHiding(player.hidden); return;
   }
   if (t.type === 'prop') { pickProp(t.ref); return; }
-  if (t.type === 'ward' || t.type === 'bed') { const w = t.ref; player.hidden = w; player.x = w.x; player.z = w.z; hideYaw = Math.atan2(-w.fx, -w.fz); yaw = hideYaw; pitch = 0; SFX.hide(); return; }
+  if (t.type === 'ward' || t.type === 'bed') {
+    if (tk.fl === player.fl && tk.stun <= 0 && tk.state === 'chase' && tk.lost < 1.5 && Math.hypot(tk.x - player.x, tk.z - player.z) < CFG.SIGHT + 2) { msg("He's right behind you! Break his sight first, then hide.", 3); return; }
+    const w = t.ref; player.hidden = w;
+    if (tk.state === 'chase' || (tk.target && Math.hypot(tk.target.x - w.x, tk.target.z - w.z) < 3)) {   // he lost her: he searches somewhere else
+      let far = randomSpot(player.fl); for (let i = 0; i < 8 && far.f === player.fl && Math.hypot(far.x - w.x, far.z - w.z) < 9; i++) far = randomSpot(player.fl); tk.state = 'search'; tk.target = far; tk.searchT = 3; tk.path = []; tk.lost = 0; tk.findT = 0;
+    } player.x = w.x; player.z = w.z; hideYaw = Math.atan2(-w.fx, -w.fz); yaw = hideYaw; pitch = 0; SFX.hide(); return; }
   if (t.type === 'door') {
     const d = t.ref;
     if (d.boarded) { chopDoor(d); return; }
@@ -1121,7 +1142,7 @@ function hurt() {
   if (player.inv > 0) return;
   hp--; player.inv = 2.5; tk.stun = 1.6; shake = 0.45; SFX.hurt();
   const f = $('flash'); f.style.transition = 'none'; f.style.opacity = '0.7'; requestAnimationFrame(() => { f.style.transition = 'opacity .6s'; f.style.opacity = '0'; });
-  if (player.hidden) { const w = player.hidden; player.hidden = null; player.x = w.x + w.fx * 1.05; player.z = w.z + w.fz * 1.05; }
+  if (player.hidden) leaveHiding(player.hidden);
   const a = Math.atan2(player.z - tk.z, player.x - tk.x);
   for (let i = 0; i < 10; i++) moveEnt(player, Math.cos(a) * 0.3, Math.sin(a) * 0.3, true);
   if (hp <= 0) { state = 'dead'; showScreen('dead'); }
@@ -1184,7 +1205,7 @@ function updateTantrik(dt) {
   else if (t.state === 'chase') { t.lost += dt; if (t.lost > 3.5) { t.state = 'search'; t.searchT = 4; } }
   if (t.state !== 'chase' && (same ? d : d + 10) < noiseNow) { t.state = 'search'; t.target = { f: p.fl, x: p.x, z: p.z }; t.searchT = 5; t.path = []; }
 
-  if (p.hidden) { if (same && d < 1.9) { t.findT += dt; if (t.findT > 4.2) { t.findT = 0; hurt(); return; } } else t.findT = 0; }
+  if (p.hidden) { if (same && d < 1.5 && t.state !== 'chase') { t.findT += dt; if (t.findT > 5.5) { t.findT = 0; hurt(); return; } } else t.findT = 0; }
   if (!p.hidden && Math.abs(heightOf(t) - heightOf(p)) < 1.8 && d < 1.0) { hurt(); return; }
 
   const sp = t.state === 'chase' ? t.sp[1] : t.sp[0];
@@ -1342,5 +1363,5 @@ loadStage(0);
 showScreen('menu');
 requestAnimationFrame(loop);
 window.__nani = { get state() { return state; }, get player() { return player; }, get tk() { return tk; }, get inv() { return inv; },
-  get drawers() { return drawers; }, get doors() { return doors; }, set yaw(v) { yaw = v; }, get hp() { return hp; }, set pingT(v) { pingT = v; }, get carry() { return carry; }, get props() { return props; }, get thrown() { return thrown; }, set axe(v) { inv.axe = v; }, get boarded() { return doors.filter(d => d.boarded).length; } };
+  get drawers() { return drawers; }, get doors() { return doors; }, set yaw(v) { yaw = v; }, get hp() { return hp; }, set pingT(v) { pingT = v; }, get carry() { return carry; }, get props() { return props; }, get thrown() { return thrown; }, set axe(v) { inv.axe = v; }, get wards() { return wards; }, get blockers() { return blockers; }, get beds() { return beds; }, get boarded() { return doors.filter(d => d.boarded).length; } };
 })();

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Nani vs Tantrik 3D</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none}
+  html,body{margin:0;height:100%;overflow:hidden;background:#000;color:#eee;font-family:Georgia,serif;touch-action:none}
+  canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #ui{position:fixed;inset:0;pointer-events:none}
+  #hud{position:absolute;left:14px;top:10px;font-size:15px;text-shadow:0 0 4px #000;line-height:1.35}
+  #hearts{font-size:22px;color:#e23b4a;letter-spacing:3px}
+  #tal{color:#f3d36b}#floor{color:#9cd}#stage{color:#aaa;font-size:13px}
+  #mini{position:absolute;left:14px;top:132px;width:144px;height:96px;background:rgba(0,0,0,.5);border:1px solid #555;border-radius:4px;opacity:.9}
+  body.touch #mini{width:120px;height:80px;top:122px}
+  #status{margin-top:4px;font-size:15px;min-height:20px}
+  #msgs{position:absolute;left:0;right:0;bottom:17%;text-align:center;font-size:18px;text-shadow:0 0 6px #000;padding:0 70px}
+  #msgs div{margin:3px 0}
+  #prompt{position:absolute;left:0;right:0;bottom:31%;text-align:center;color:#6dff9f;font-size:18px;text-shadow:0 0 6px #000}
+  #arrowbox{position:absolute;top:10px;left:50%;transform:translateX(-50%);text-align:center;display:none;color:#ff6b6b;text-shadow:0 0 6px #000}
+  #arrow{font-size:34px;line-height:34px}
+  #dist{font-size:13px}
+  button{font-family:inherit;pointer-events:auto;cursor:pointer}
+  #pauseBtn{position:absolute;top:calc(10px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));width:46px;height:46px;border-radius:10px;border:2px solid #888;background:rgba(0,0,0,.55);color:#ddd;font-size:18px;padding:0}
+  #eye{position:absolute;right:calc(18px + env(safe-area-inset-right));bottom:calc(18px + env(safe-area-inset-bottom));width:88px;height:88px;border-radius:50%;
+       border:3px solid #555;background:rgba(0,0,0,.6);color:#777;font-size:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0}
+  #eye svg{width:44px;height:30px;margin-bottom:2px}
+  #eye.ready{border-color:#5ad2ff;color:#5ad2ff;animation:pulse 1.2s infinite}
+  #eye.active{border-color:#6dff9f;color:#6dff9f;background:conic-gradient(rgba(109,255,159,.35) var(--p,100%),rgba(0,0,0,.6) 0)}
+  #eye.used{border-color:#7a4b4b;color:#7a4b4b}
+  @keyframes pulse{50%{box-shadow:0 0 18px #5ad2ff}}
+  .tbtn{position:absolute;right:calc(26px + env(safe-area-inset-right));width:72px;height:72px;border-radius:50%;border:2px solid #888;background:rgba(0,0,0,.55);color:#ddd;font-size:12px;display:none;padding:0}
+  .tbtn.on{border-color:#6dff9f;color:#6dff9f}
+  .tbtn.glow{border-color:#6dff9f;color:#6dff9f;box-shadow:0 0 14px #6dff9f}
+  #bUse{bottom:122px;width:84px;height:84px;right:calc(20px + env(safe-area-inset-right));font-size:14px}
+  #bCrouch{bottom:214px}
+  #bThrow{bottom:130px;right:calc(116px + env(safe-area-inset-right))}
+  #bDrop{bottom:130px;right:calc(196px + env(safe-area-inset-right))}
+  #bView{position:absolute;top:calc(64px + env(safe-area-inset-top));right:calc(14px + env(safe-area-inset-right));width:46px;height:46px;border-radius:10px;border:2px solid #888;background:rgba(0,0,0,.55);color:#ddd;font-size:11px;padding:0}
+  body.touch .tbtn{display:block}
+  #joy{position:absolute;width:120px;height:120px;border-radius:50%;border:2px solid rgba(255,255,255,.25);display:none;margin:-60px 0 0 -60px}
+  #knob{position:absolute;left:35px;top:35px;width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.3)}
+  #slit{position:absolute;inset:0;display:none;background:linear-gradient(#000 0 17%,rgba(0,0,0,.35) 21%,rgba(0,0,0,.35) 79%,#000 83% 100%)}
+  #danger{position:absolute;inset:0;opacity:0;background:radial-gradient(ellipse at center,transparent 45%,rgba(150,0,0,.75) 100%);transition:opacity .3s}
+  #flash{position:absolute;inset:0;background:#a00;opacity:0;transition:opacity .5s}
+  #screen{position:fixed;inset:0;background:rgba(0,0,0,.88);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:20px;z-index:10;overflow:auto}
+  #screen h1{font-size:clamp(28px,6vw,52px);margin:0 0 14px;color:#c33}
+  #screen p{margin:5px 0;font-size:clamp(13px,2.4vw,18px);color:#ddd;max-width:680px}
+  #screen button{margin:10px 6px 0;font-size:20px;padding:12px 30px;min-width:240px;background:#7a1e1e;color:#fff;border:2px solid #c33;border-radius:8px}
+  #screen button.alt{background:#222;border-color:#777}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="ui">
+  <div id="slit"></div>
+  <div id="hud"><div id="hearts"></div><div id="tal"></div><div id="floor"></div><div id="stage"></div><div id="status"></div></div>
+  <canvas id="mini" width="144" height="96"></canvas>
+  <div id="arrowbox"><div id="arrow">&#9650;</div><div id="dist"></div></div>
+  <div id="msgs"></div>
+  <div id="prompt"></div>
+  <div id="danger"></div>
+  <div id="flash"></div>
+  <div id="joy"><div id="knob"></div></div>
+  <button id="pauseBtn" title="Pause (Esc / P)">&#10074;&#10074;</button>
+  <button id="bView" title="Switch view (V)">VIEW</button>
+  <button class="tbtn" id="bCrouch">CROUCH</button>
+  <button class="tbtn" id="bUse">USE</button>
+  <button class="tbtn" id="bThrow">THROW</button>
+  <button class="tbtn" id="bDrop">DROP</button>
+  <button id="eye">
+    <svg viewBox="0 0 44 30" fill="none" stroke="currentColor" stroke-width="3"><path d="M2 15Q22 -4 42 15Q22 34 2 15Z"/><circle cx="22" cy="15" r="5" fill="currentColor"/></svg>
+    <span id="eyeLabel">No charm</span>
+  </button>
+</div>
+<div id="screen"></div>
+
+<script>
+// Load order: Three.js (local copy first, CDN fallback) -> maps.js -> game.js
+function loadScript(src, ok, fail) {
+  const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = fail; document.head.appendChild(s);
+}
+function showErr(t) {
+  const s = document.getElementById('screen'); s.style.display = 'flex';
+  s.innerHTML = '<h1>Something went wrong</h1><p style="color:#ffb36b">' + t + '</p><p>Send a screenshot of this to Claude.</p>';
+}
+window.addEventListener('error', e => { if (e.message && !/pointer ?lock/i.test(e.message)) showErr(e.message + '<br>(' + (e.filename || '').split('/').pop() + ' line ' + e.lineno + ')'); });
+window.addEventListener('unhandledrejection', e => { const r = String(e.reason); if (!/pointer ?lock|NotAllowedError/i.test(r)) showErr(r); });
+const v = Date.now();
+function start() {
+  loadScript('maps.js?v=' + v, () => loadScript('game.js?v=' + v, () => {}, () => showErr('game.js not found in the www folder.')),
+    () => showErr('maps.js not found in the www folder. It must be next to index.html and game.js.'));
+}
+loadScript('three.min.js', start, () =>
+  loadScript('https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', start, () => showErr('Could not load the 3D engine (three.min.js).')));
+</script>
+</body>
+</html>
